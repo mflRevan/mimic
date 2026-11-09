@@ -62,7 +62,8 @@ you tick *Delete the application data*.
 ```
 
 - **Hears** what you pick: one app (`app:Discord`, process loopback, so just the call) or everything an output plays,
-  transcribed with the dictation models.
+  transcribed with the dictation models. With Parakeet, each phrase is decoded with the stream's last ~8 s of speech
+  in front of it (only the new words are kept), so a short "ja, genau" stays in the conversation's language.
 - **Hears when someone is done.** [Silero VAD](https://huggingface.co/onnx-community/silero-vad) separates speech from
   noise, and [Smart Turn v3.2](https://huggingface.co/pipecat-ai/smart-turn-v3) (~25 ms on the CPU) judges from
   intonation whether the speaker has finished: a finished turn is answered at once, "I was going to say that maybe we

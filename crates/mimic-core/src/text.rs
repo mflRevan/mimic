@@ -34,6 +34,12 @@ pub struct Transcript {
 }
 
 impl Transcript {
+    /// The text of the words from `t` seconds on (a word counts when its middle is past `t`).
+    /// Used to drop the context audio that was decoded in front of a phrase.
+    pub fn after(&self, t: f32) -> String {
+        self.words.iter().filter(|w| (w.start + w.end) / 2.0 >= t).map(|w| w.text.trim()).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ")
+    }
+
     /// Build word entries from plain text when an engine gives no timestamps:
     /// spread the words evenly over `duration`.
     pub fn from_text(text: &str, duration: f32) -> Self {
@@ -615,6 +621,16 @@ fn lowercase(toks: &mut [Tok]) {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn words_after_a_context_prefix() {
+        let w = |t: &str, a: f32, b: f32| Word { text: t.into(), start: a, end: b, conf: None };
+        let t = Transcript { text: String::new(), words: vec![w("Wir", 0.2, 0.4), w("sind", 0.4, 0.7), w("fast", 7.9, 8.3), w("fertig.", 8.3, 8.8)] };
+        assert_eq!(t.after(8.0), "fast fertig.");
+        assert_eq!(t.after(0.0), "Wir sind fast fertig.");
+        assert_eq!(t.after(9.0), "");
+    }
+
     use super::*;
     use crate::rules::{Rule, RuleSet};
 

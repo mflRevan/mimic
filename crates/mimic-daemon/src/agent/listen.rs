@@ -34,6 +34,50 @@ pub struct Pending {
     pub turn_done: bool,
     /// Seconds of speech in the phrase.
     pub secs: f32,
+    /// Seconds of context audio decoded in front of the phrase (its words are dropped).
+    pub ctx_s: f32,
+}
+
+/// Recent speech of one stream, kept as context for the next phrase. Short replies ("ja,
+/// genau", "okay") decoded on their own leave a multilingual model guessing the language
+/// from a second of audio; with the conversation's last few seconds in front of them it hears
+/// the language (and the voices) it has been hearing.
+#[derive(Default)]
+pub struct SttContext {
+    audio: Vec<f32>,
+    at: Option<std::time::Instant>,
+}
+
+/// Context kept per stream (seconds), and how long it stays relevant after the last phrase.
+const CTX_S: f32 = 8.0;
+const CTX_FRESH: std::time::Duration = std::time::Duration::from_secs(120);
+/// Silence between context pieces and before the phrase, so words don't run together.
+const CTX_GAP_S: f32 = 0.3;
+
+impl SttContext {
+    /// The context to put in front of a phrase (empty if stale).
+    fn prefix(&self) -> &[f32] {
+        if self.at.is_some_and(|t| t.elapsed() < CTX_FRESH) {
+            &self.audio
+        } else {
+            &[]
+        }
+    }
+
+    fn push(&mut self, phrase: &[f32]) {
+        if !self.at.is_some_and(|t| t.elapsed() < CTX_FRESH) {
+            self.audio.clear();
+        }
+        if !self.audio.is_empty() {
+            self.audio.extend(std::iter::repeat_n(0.0, (CTX_GAP_S * SR as f32) as usize));
+        }
+        self.audio.extend_from_slice(phrase);
+        let max = (CTX_S * SR as f32) as usize;
+        if self.audio.len() > max {
+            self.audio.drain(..self.audio.len() - max);
+        }
+        self.at = Some(std::time::Instant::now());
+    }
 }
 
 /// The native-rate mic, resampled to 16 kHz here so both are sample-aligned.
@@ -299,9 +343,27 @@ impl Agent {
             }
         };
         let speaker = if hear.is_some() { self.identify(&p.audio, secs) } else { None };
+        // Decode with the stream's recent speech in front (engines with word timestamps only:
+        // their words tell where the phrase starts). Private talk isn't conversation context.
+        let timestamps = mimic_core::models::find(&self.cfg.model.id).is_some_and(|m| m.engine == mimic_core::models::EngineKind::Parakeet);
+        let ctx = self.stt_ctx.entry(hear).or_default();
+        let (audio, ctx_s) = if timestamps && !private && !talk && !ctx.prefix().is_empty() {
+            let pre = ctx.prefix();
+            let gap = (CTX_GAP_S * SR as f32) as usize;
+            let mut a = Vec::with_capacity(pre.len() + gap + p.audio.len());
+            a.extend_from_slice(pre);
+            a.extend(std::iter::repeat_n(0.0, gap));
+            a.extend_from_slice(&p.audio);
+            (a, (pre.len() + gap) as f32 / SR as f32)
+        } else {
+            (p.audio.clone(), 0.0)
+        };
+        if !private && !talk {
+            ctx.push(&p.audio);
+        }
         let id = self.next_job;
         self.next_job += 1;
-        self.pending.insert(id, Pending { hear, label, private, talk, convo, native, at: now_ms(), speaker, turn_done, secs });
+        self.pending.insert(id, Pending { hear, label, private, talk, convo, native, at: now_ms(), speaker, turn_done, secs, ctx_s });
         let language = match self.cfg.model.language.trim() {
             "" | "auto" => None,
             l => Some(l.to_string()),
@@ -311,7 +373,7 @@ impl Agent {
             session: 0,
             phrase: 0,
             kind: JobKind::Agent,
-            audio: Arc::new(p.audio),
+            audio: Arc::new(audio),
             range: (p.start, p.end),
             opts: DecodeOpts { hotwords: vec![], language },
         }));
@@ -320,6 +382,8 @@ impl Agent {
     pub(super) fn on_stt(&mut self, id: u64, result: Result<Transcript, String>) {
         let Some(p) = self.pending.remove(&id) else { return };
         let text = match result {
+            // Only the phrase itself, not the context decoded in front of it.
+            Ok(t) if p.ctx_s > 0.0 => t.after(p.ctx_s - 0.05),
             Ok(t) => t.text.trim().to_string(),
             Err(e) => {
                 log::warn!("agent transcription: {e}");

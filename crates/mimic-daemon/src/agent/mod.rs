@@ -146,6 +146,9 @@ pub(crate) struct Agent {
 
     pending: HashMap<u64, Pending>,
     next_job: u64,
+    /// Per stream (`None` = your mic): its recent speech, decoded in front of each new phrase
+    /// so the speech model hears it in context (language, voices) instead of in isolation.
+    stt_ctx: HashMap<Option<u64>, listen::SttContext>,
     talk_texts: Vec<String>,
     talk_released: bool,
 
@@ -249,6 +252,7 @@ pub fn spawn(cfg: &Config, mic_tap: Tap, engine: Sender<EngineCmd>, hub: Arc<Hub
                 speak_mic: Spans::default(),
                 pending: HashMap::new(),
                 next_job: JOB_BASE,
+                stt_ctx: HashMap::new(),
                 talk_texts: Vec::new(),
                 talk_released: false,
                 timeline: Timeline::new(400),
