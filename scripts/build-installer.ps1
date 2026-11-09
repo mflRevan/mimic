@@ -8,9 +8,14 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# Native tools (cargo, npm, tauri) print progress on stderr; Windows PowerShell would turn that
+# into a terminating error under "Stop". Run them under "Continue" and judge by exit code.
 function Step([string]$what, [scriptblock]$run) {
     Write-Host "== $what" -ForegroundColor DarkYellow
-    & $run
+    $global:LASTEXITCODE = 0
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { & $run } finally { $ErrorActionPreference = $saved }
     if ($LASTEXITCODE) { throw "$what failed (exit $LASTEXITCODE)" }
 }
 
