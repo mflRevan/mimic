@@ -12,7 +12,9 @@ param(
     [switch]$SkipTests,
     [switch]$Update
 )
-$ErrorActionPreference = "Stop"
+# "Continue": native tools write progress to stderr, which "Stop" would turn into errors in
+# Windows PowerShell. Native calls are checked by exit code instead, cmdlets use -ErrorAction Stop.
+$ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 $t0 = Get-Date
@@ -35,7 +37,7 @@ gh auth status 2>&1 | Out-Null
 if ($LASTEXITCODE) { throw "the GitHub CLI isn't logged in (gh auth login)" }
 $repo = gh repo view --json nameWithOwner -q .nameWithOwner
 
-$current = ([regex]'(?m)^version = "([^"]+)"').Match((Get-Content Cargo.toml -Raw)).Groups[1].Value
+$current = ([regex]'(?m)^version = "([^"]+)"').Match((Get-Content Cargo.toml -Raw -ErrorAction Stop)).Groups[1].Value
 if (-not $Version) {
     $p = $current.Split("-")[0].Split(".")
     $Version = "$($p[0]).$($p[1]).$([int]$p[2] + 1)"
@@ -52,10 +54,10 @@ if (-not $SkipTests) {
     Step "tests" { cargo test --release --workspace -q }
 }
 Step "installer" { powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-installer.ps1 }
-$exe = Get-Item "target\release\bundle\nsis\Mimic_${Version}_x64-setup.exe"
+$exe = Get-Item "target\release\bundle\nsis\Mimic_${Version}_x64-setup.exe" -ErrorAction Stop
 
 # --- publish -----------------------------------------------------------------
-$prev = git describe --tags --abbrev=0 2>$null
+$prev = git tag --list "v*" --sort=-v:refname | Select-Object -First 1
 $range = if ($prev) { "$prev..HEAD" } else { "HEAD" }
 $notes = (git log $range --no-merges --pretty="- %s" | Where-Object { $_ -notmatch '^- Release v' }) -join "`n"
 if (-not $notes) { $notes = "- Maintenance" }
