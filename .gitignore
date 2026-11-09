@@ -1,0 +1,16 @@
+/target
+/dist
+*.log
+.DS_Store
+ui/src-tauri/binaries/
+/prototype/
+
+# Local tooling and secrets: never committed.
+/.claude/
+.vscode/
+.idea/
+.env
+.env.*
+*.pem
+*.key
+*.pfx

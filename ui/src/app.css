@@ -1,0 +1,374 @@
+/* Mimic — black and gold. See docs/DESIGN.md. */
+
+@font-face {
+  font-family: "Licht Serif";
+  src: url(/fonts/licht/LichtSerif-Light.woff2) format("woff2");
+  font-weight: 300;
+  font-display: block;
+}
+@font-face {
+  font-family: "Licht Serif";
+  src: url(/fonts/licht/LichtSerif-Regular.woff2) format("woff2");
+  font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: "Licht Serif";
+  src: url(/fonts/licht/LichtSerif-Medium.woff2) format("woff2");
+  font-weight: 500;
+  font-display: block;
+}
+@font-face {
+  font-family: "Geist";
+  src: url(/fonts/geist/Geist-Light.woff2) format("woff2");
+  font-weight: 300;
+  font-display: block;
+}
+@font-face {
+  font-family: "Geist";
+  src: url(/fonts/geist/Geist-Regular.woff2) format("woff2");
+  font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: "Geist";
+  src: url(/fonts/geist/Geist-Medium.woff2) format("woff2");
+  font-weight: 500;
+  font-display: block;
+}
+@font-face {
+  font-family: "Geist";
+  src: url(/fonts/geist/Geist-SemiBold.woff2) format("woff2");
+  font-weight: 600;
+  font-display: block;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url(/fonts/geist/GeistMono-Regular.woff2) format("woff2");
+  font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url(/fonts/geist/GeistMono-Medium.woff2) format("woff2");
+  font-weight: 500;
+  font-display: block;
+}
+
+:root {
+  color-scheme: dark;
+  --display: "Licht Serif", Georgia, serif;
+  --font: "Geist", "Segoe UI", system-ui, sans-serif;
+  --mono: "Geist Mono", "Cascadia Mono", ui-monospace, monospace;
+
+  --void: #000000;
+  --plate: #0b0a08;
+  --plate-2: #12100c;
+  --rule: #2a2418;
+  --rule-strong: #4a3f27;
+  --gold: #e3b04b;
+  --gold-dim: #8c6b2a;
+  --gold-ink: #1a1408;
+  --gold-wash: rgba(227, 176, 75, 0.1);
+  --text: #ede6d6;
+  --text-2: #9a9284;
+  --text-3: #5e584d;
+  --danger: #e5484d;
+
+  --q: cubic-bezier(0.2, 0.9, 0.1, 1);
+  --t1: 90ms;
+  --t2: 140ms;
+  --t3: 220ms;
+  --cut: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--void);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+body.popup-mode,
+html:has(body.popup-mode) {
+  background: transparent;
+}
+
+#app {
+  height: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+input,
+textarea {
+  user-select: text;
+}
+
+::selection {
+  background: var(--gold);
+  color: var(--gold-ink);
+}
+
+:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border: 3px solid var(--void);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--rule-strong);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 400;
+}
+
+p {
+  margin: 0;
+}
+
+.display {
+  font-family: var(--display);
+  font-weight: 300;
+  letter-spacing: -0.012em;
+  line-height: 1.04;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Section label: `01 — MODEL` */
+.label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.label b {
+  color: var(--gold-dim);
+  font-weight: 400;
+}
+
+.muted {
+  color: var(--text-2);
+}
+.faint {
+  color: var(--text-3);
+}
+.gold {
+  color: var(--gold);
+}
+
+/* Chamfered outline plate: background is the outline, ::before the fill. */
+.cut {
+  --c: var(--cut);
+  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  --c: 6px;
+  --edge: var(--rule-strong);
+  --fill: var(--void);
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 16px;
+  border: 0;
+  background: var(--edge);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
+  transition:
+    background var(--t1) var(--q),
+    color var(--t1) var(--q);
+}
+.btn::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  background: var(--fill);
+  clip-path: polygon(calc(var(--c) - 0.6px) 0, 100% 0, 100% calc(100% - var(--c) + 0.6px), calc(100% - var(--c) + 0.6px) 100%, 0 100%, 0 calc(var(--c) - 0.6px));
+  transition: background var(--t1) var(--q);
+}
+.btn:hover {
+  --edge: var(--gold-dim);
+  color: var(--gold);
+}
+.btn:active {
+  --fill: var(--plate-2);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.btn.primary {
+  --edge: var(--gold);
+  --fill: var(--gold);
+  color: var(--gold-ink);
+}
+.btn.primary:hover {
+  --fill: #f0c262;
+  --edge: #f0c262;
+  color: var(--gold-ink);
+}
+.btn.ghost {
+  --edge: transparent;
+}
+.btn.ghost:hover {
+  --edge: var(--rule);
+}
+.btn.danger:hover,
+.btn.danger.armed {
+  --edge: var(--danger);
+  color: var(--danger);
+}
+.btn.lg {
+  height: 42px;
+  padding: 0 22px;
+  font-size: 11.5px;
+}
+.btn.sm {
+  height: 28px;
+  padding: 0 11px;
+  font-size: 10.5px;
+}
+.btn.icon {
+  width: 30px;
+  padding: 0;
+}
+
+/* ---------------------------------------------------------------- inputs */
+
+.input {
+  height: 38px;
+  width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: var(--plate);
+  outline: none;
+  transition: border-color var(--t1) var(--q);
+}
+.input:hover {
+  border-color: var(--rule-strong);
+}
+.input:focus {
+  border-color: var(--gold);
+}
+.input::placeholder {
+  color: var(--text-3);
+}
+
+kbd {
+  font-family: var(--mono);
+}
+
+/* ---------------------------------------------------------------- layout helpers */
+
+.hair {
+  height: 1px;
+  background: var(--rule);
+}
+
+/* Two-column settings layout used by dense pages. It fills the page below the header and each
+   column scrolls on its own, so nothing is out of reach in a short window. */
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 48px;
+  flex: 1;
+  min-height: 0;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: 6px;
+  padding-bottom: 8px;
+}
+/* Narrow windows: one column, and the page scrolls as a whole. */
+@media (max-width: 860px) {
+  .cols {
+    display: block;
+    flex: none;
+  }
+  .col {
+    overflow: visible;
+    padding-right: 0;
+  }
+  .col + .col {
+    margin-top: 26px;
+  }
+}
+
+.group + .group {
+  margin-top: 26px;
+}
+.group > .label {
+  display: block;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+
+[data-motion="reduced"] *,
+[data-motion="reduced"] *::before,
+[data-motion="reduced"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}

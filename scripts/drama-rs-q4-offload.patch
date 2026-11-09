@@ -1,0 +1,77 @@
+diff --git a/src/model.rs b/src/model.rs
+index 04cafcd..9cf6858 100644
+--- a/src/model.rs
++++ b/src/model.rs
+@@ -29,16 +29,17 @@ impl Q8 {
+ }
+ 
+ /// Routed experts, int4 asymmetric with group 64: q [E, N, K/2], sm [E, N, K/64, 2].
++/// On the GPU, or in pinned host RAM read over PCIe (`DRAMA_Q4_VRAM_LAYERS`).
+ pub struct Q4 {
+-    pub q: DevBuf,
+-    pub sm: DevBuf,
++    pub q: ExpertBuf<u8>,
++    pub sm: ExpertBuf<u16>,
+     pub n: usize,
+     pub k: usize,
+ }
+ 
+ impl Q4 {
+     pub fn expert(&self, e: usize) -> (*const u8, *const u16) {
+-        (self.q.at::<u8>(e * self.n * self.k / 2), self.sm.at::<u16>(e * self.n * (self.k / 64) * 2))
++        unsafe { (self.q.ptr().add(e * self.n * self.k / 2), self.sm.ptr().add(e * self.n * (self.k / 64) * 2)) }
+     }
+ }
+ 
+@@ -220,10 +221,26 @@ impl Loader<'_> {
+         Ok(Q8 { q, s, n: shape[0], k: shape[1] })
+     }
+ 
+-    fn q4(&mut self, name: &str) -> Result<Q4> {
+-        let (q, shape) = self.raw(&format!("{name}.q4"), Dtype::U8)?;
+-        let (sm, _) = self.raw(&format!("{name}.sm"), Dtype::F16)?;
+-        Ok(Q4 { q, sm, n: shape[1], k: shape[2] * 2 })
++    fn q4(&mut self, name: &str, host: bool) -> Result<Q4> {
++        if !host {
++            let (q, shape) = self.raw(&format!("{name}.q4"), Dtype::U8)?;
++            let (sm, _) = self.raw(&format!("{name}.sm"), Dtype::F16)?;
++            return Ok(Q4 { q: ExpertBuf::Device(q), sm: ExpertBuf::Device(sm), n: shape[1], k: shape[2] * 2 });
++        }
++        // Pinned host memory: the kernels read it directly over PCIe (unified addressing).
++        let tq = self.st.tensor(&format!("{name}.q4")).map_err(|e| anyhow!("{}{name}.q4: {e}", self.prefix))?;
++        let ts = self.st.tensor(&format!("{name}.sm")).map_err(|e| anyhow!("{}{name}.sm: {e}", self.prefix))?;
++        if tq.dtype() != Dtype::U8 || ts.dtype() != Dtype::F16 {
++            bail!("{}{name}: unexpected dtypes", self.prefix);
++        }
++        let shape = tq.shape().to_vec();
++        let q = Pinned::<u8>::new(tq.data().len())?;
++        let sm = Pinned::<u16>::new(ts.data().len() / 2)?;
++        unsafe {
++            std::ptr::copy_nonoverlapping(tq.data().as_ptr(), q.ptr(), tq.data().len());
++            std::ptr::copy_nonoverlapping(ts.data().as_ptr(), sm.ptr() as *mut u8, ts.data().len());
++        }
++        Ok(Q4 { q: ExpertBuf::Host(q), sm: ExpertBuf::Host(sm), n: shape[1], k: shape[2] * 2 })
+     }
+ }
+ 
+@@ -253,6 +270,11 @@ impl Model {
+             ExpertMode::Fp8 { dir, .. } => Some(Fp8Source::open(dir)?),
+             ExpertMode::Q4 => None,
+         };
++        // int4 experts of layers >= this stay in pinned host RAM (less VRAM, slower decode).
++        let q4_vram: usize = std::env::var("DRAMA_Q4_VRAM_LAYERS").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(usize::MAX);
++        if fp8.is_none() && q4_vram < tc.num_hidden_layers {
++            eprintln!("int4 experts: {q4_vram}/{} layers in VRAM, the rest in host RAM", tc.num_hidden_layers);
++        }
+         let mut layers = Vec::with_capacity(tc.num_hidden_layers);
+         for i in 0..tc.num_hidden_layers {
+             let file = File::open(&dir.join(format!("layer{i:02}.safetensors")))?;
+@@ -286,7 +308,7 @@ impl Model {
+                         let on_gpu = matches!(experts, ExpertMode::Fp8 { vram_layers, .. } if i < *vram_layers);
+                         Experts::Fp8(src.layer(i, tc.num_experts, tc.hidden_size, tc.moe_intermediate_size, on_gpu.then_some(stream))?)
+                     }
+-                    None => Experts::Q4 { gate_up: l.q4("moe.gate_up")?, down: l.q4("moe.down")? },
++                    None => Experts::Q4 { gate_up: l.q4("moe.gate_up", i >= q4_vram)?, down: l.q4("moe.down", i >= q4_vram)? },
+                 },
+             });
+             stream.sync()?;
